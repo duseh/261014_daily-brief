@@ -325,7 +325,7 @@
        ========================================================================== */
     .ticker-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 16px;
     }
 
@@ -807,7 +807,7 @@
       }
 
       .ticker-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
         gap: 12px;
       }
 
@@ -830,6 +830,12 @@
 
       .btn-scroll-top {
         align-self: flex-start;
+      }
+    }
+
+    @media (max-width: 540px) {
+      .ticker-grid {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -1128,7 +1134,7 @@
       // 2. Ticker Grid Skeleton
       const tickerContainer = document.getElementById("ticker-grid-container");
       if (tickerContainer) {
-        tickerContainer.innerHTML = [1, 2, 3].map(() => `
+        tickerContainer.innerHTML = [1, 2, 3, 4].map(() => `
           <div class="skeleton-ticker-card">
             <div style="display: flex; justify-content: space-between;">
               <div class="skeleton-line" style="width: 70px; height: 14px;"></div>

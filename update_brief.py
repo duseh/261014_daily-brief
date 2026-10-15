@@ -36,7 +36,8 @@ RSS_FEEDS = [
 DEFAULT_INDICATORS = [
     {"name": "KOSPI", "value": "2,600.00", "change": "0.00", "change_rate": "0.00%", "direction": "FLAT"},
     {"name": "KOSDAQ", "value": "850.00", "change": "0.00", "change_rate": "0.00%", "direction": "FLAT"},
-    {"name": "USD/KRW", "value": "1,350.00", "change": "0.00", "change_rate": "0.00%", "direction": "FLAT"}
+    {"name": "USD/KRW", "value": "1,350.00", "change": "0.00", "change_rate": "0.00%", "direction": "FLAT"},
+    {"name": "WTI 유가", "value": "$70.00", "change": "0.00", "change_rate": "0.00%", "direction": "FLAT"}
 ]
 
 
@@ -218,7 +219,51 @@ def fetch_market_indicators() -> List[Dict[str, str]]:
         else:
             usd = DEFAULT_INDICATORS[2]
 
-        indicators = [kospi, kosdaq, usd]
+        # 3. 국제유가 (WTI 원유 선물) 파싱
+        try:
+            oil_url = "https://api.stock.naver.com/marketindex/energy/CLcv1"
+            oil_res = requests.get(oil_url, headers=headers, timeout=5)
+            oil_data = oil_res.json()
+            oil_val = str(oil_data.get("closePrice", "70.00"))
+            oil_change_raw = str(oil_data.get("fluctuations", "0.00"))
+            oil_ratio_raw = str(oil_data.get("fluctuationsRatio", "0.00"))
+            fluc_type = oil_data.get("fluctuationsType", {}).get("name", "")
+
+            oil_dir = "FLAT"
+            try:
+                chg_flt = float(oil_change_raw.replace(",", ""))
+                if fluc_type == "RISING" or chg_flt > 0:
+                    oil_dir = "UP"
+                elif fluc_type == "FALLING" or chg_flt < 0:
+                    oil_dir = "DOWN"
+            except Exception:
+                if "+" in oil_change_raw:
+                    oil_dir = "UP"
+                elif "-" in oil_change_raw:
+                    oil_dir = "DOWN"
+
+            if oil_dir == "UP":
+                oil_change = ("+" if not oil_change_raw.startswith("+") else "") + oil_change_raw
+                oil_rate = ("+" if not oil_ratio_raw.startswith("+") else "") + oil_ratio_raw + ("%" if not oil_ratio_raw.endswith("%") else "")
+            elif oil_dir == "DOWN":
+                oil_change = ("-" if not oil_change_raw.startswith("-") else "") + oil_change_raw.replace("-", "")
+                oil_rate = ("-" if not oil_ratio_raw.startswith("-") else "") + oil_ratio_raw.replace("-", "") + ("%" if not oil_ratio_raw.endswith("%") else "")
+            else:
+                oil_change = oil_change_raw
+                oil_rate = oil_ratio_raw + ("%" if not oil_ratio_raw.endswith("%") else "")
+
+            wti = {
+                "name": "WTI 유가",
+                "value": f"${oil_val}",
+                "change": oil_change,
+                "change_rate": oil_rate,
+                "direction": oil_dir
+            }
+        except Exception as e:
+            logger.warning(f"WTI 유가 API 수집 실패, 기본 폴백 적용: {e}")
+            wti = DEFAULT_INDICATORS[3]
+
+        indicators = [kospi, kosdaq, usd, wti]
         logger.info(f"실시간 시장 지표 수집 성공: {indicators}")
         return indicators
 
@@ -229,7 +274,7 @@ def fetch_market_indicators() -> List[Dict[str, str]]:
             try:
                 with open("data.json", "r", encoding="utf-8") as f:
                     prev = json.load(f)
-                    if "market_indicators" in prev and len(prev["market_indicators"]) == 3:
+                    if "market_indicators" in prev and len(prev["market_indicators"]) >= 3:
                         logger.info("기존 data.json의 시장 지표를 계승합니다.")
                         return prev["market_indicators"]
             except Exception:
@@ -279,7 +324,7 @@ def generate_brief_with_gemini(
 [반드시 준수해야 할 JSON 스키마 및 가이드]
 1. `date`: "{today_str}"
 2. `macro_key_points`: 오늘의 가장 중요한 거시경제/산업 동향 핵심 요약 3문장 (문자열 배열 3개)
-3. `market_indicators`: 전달된 시장 지표 목록을 그대로 포함
+3. `market_indicators`: 전달된 4대 시장 지표 목록(KOSPI, KOSDAQ, USD/KRW, WTI 유가)을 그대로 포함
 4. `top_news`: 가장 영향력이 큰 5개의 핵심 이슈 심층 분석 카드 (정확히 5개 객체의 배열)
    각 객체는 다음 필드를 필수로 가집니다:
    - `id`: 1부터 5까지의 정수

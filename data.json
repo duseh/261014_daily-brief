@@ -26,6 +26,13 @@
       "change": "-6.18",
       "change_rate": "-0.46%",
       "direction": "DOWN"
+    },
+    {
+      "name": "WTI 유가",
+      "value": "$70.58",
+      "change": "+0.45",
+      "change_rate": "+0.64%",
+      "direction": "UP"
     }
   ],
   "top_news": [
