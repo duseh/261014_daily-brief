@@ -288,10 +288,10 @@ def generate_brief_with_gemini(articles: List[Dict[str, str]], indicators: List[
         from google import genai
         from google.genai import types
 
-        logger.info("google-genai SDK를 사용하여 Gemini 2.5 Flash 호출 중...")
+        logger.info("google-genai SDK를 사용하여 Gemini 3.8 Flash 호출 중...")
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
