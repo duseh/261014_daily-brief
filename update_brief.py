@@ -3,13 +3,14 @@
 update_brief.py
 ===============
 매일 아침 국내 주요 경제 뉴스 RSS 및 시장 지표를 수집하고,
-Gemini API를 통해 구조화된 일간 인텔리전스 브리프(data.json)를 자동 생성하는 파이프라인 스크립트.
+Gemini API(gemini-2.0-flash)를 통해 구조화된 일간 인텔리전스 브리프(data.json)를 자동 생성하는 파이프라인 스크립트.
 """
 
 import os
 import sys
 import json
 import re
+import time
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
@@ -235,8 +236,9 @@ def fetch_market_indicators() -> List[Dict[str, str]]:
         return DEFAULT_INDICATORS
 
 
-def generate_brief_with_gemini(articles: List[Dict[str, str]], indicators: List[Dict[str, str]], today_str: str) -> Dict[str, Any]:
-    """Gemini API를 호출하여 data.json 스키마에 일치하는 JSON 브리프 데이터를 생성합니다."""
+def generate_brief_with_gemini(articles: List[Dict[str, str]], indicators: List[Dict[str, str]], today_str: str, max_retries: int = 3) -> Dict[str, Any]:
+    """Gemini API(gemini-2.0-flash)를 호출하여 data.json 스키마에 일치하는 JSON 브리프 데이터를 생성합니다.
+    서버 과부하(503) 및 일시적 오류에 대비하여 최대 max_retries회 재시도합니다."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("환경 변수 GEMINI_API_KEY가 설정되어 있지 않습니다.")
@@ -283,50 +285,68 @@ def generate_brief_with_gemini(articles: List[Dict[str, str]], indicators: List[
 순수 JSON 데이터만 출력하십시오.
 """
 
-    # 1. 최신 google-genai SDK 시도
-    try:
-        from google import genai
-        from google.genai import types
+    target_model = "gemini-2.0-flash"
+    last_exception = None
 
-        logger.info("google-genai SDK를 사용하여 Gemini 3.8 Flash 호출 중...")
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                temperature=0.2,
-            )
-        )
-        content_text = response.text
-    except ImportError:
-        # 2. 레거시 google-generativeai SDK 폴백
-        import google.generativeai as legacy_genai
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Gemini API 호출 시도 ({attempt}/{max_retries}) [모델: {target_model}]...")
 
-        logger.info("google-generativeai SDK를 사용하여 Gemini 호출 중...")
-        legacy_genai.configure(api_key=api_key)
-        model = legacy_genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=system_instruction,
-            generation_config={"response_mime_type": "application/json", "temperature": 0.2}
-        )
-        response = model.generate_content(prompt)
-        content_text = response.text
+            # 1. 최신 google-genai SDK 시도
+            try:
+                from google import genai
+                from google.genai import types
 
-    # JSON 마크다운 백틱 제거 방어
-    cleaned_text = re.sub(r"^```(?:json)?\s*", "", content_text.strip(), flags=re.MULTILINE)
-    cleaned_text = re.sub(r"\s*```$", "", cleaned_text.strip(), flags=re.MULTILINE)
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model=target_model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        response_mime_type="application/json",
+                        temperature=0.2,
+                    )
+                )
+                content_text = response.text
+            except ImportError:
+                # 2. 레거시 google-generativeai SDK 폴백
+                import google.generativeai as legacy_genai
 
-    data = json.loads(cleaned_text)
+                legacy_genai.configure(api_key=api_key)
+                model = legacy_genai.GenerativeModel(
+                    model_name=target_model,
+                    system_instruction=system_instruction,
+                    generation_config={"response_mime_type": "application/json", "temperature": 0.2}
+                )
+                response = model.generate_content(prompt)
+                content_text = response.text
 
-    # 기본 스키마 무결성 검증
-    assert "date" in data, "date 필드가 누락되었습니다."
-    assert "macro_key_points" in data and len(data["macro_key_points"]) >= 1, "macro_key_points가 누락되었습니다."
-    assert "market_indicators" in data, "market_indicators가 누락되었습니다."
-    assert "top_news" in data and len(data["top_news"]) >= 1, "top_news가 누락되었습니다."
+            # JSON 마크다운 백틱 제거 방어
+            cleaned_text = re.sub(r"^```(?:json)?\s*", "", content_text.strip(), flags=re.MULTILINE)
+            cleaned_text = re.sub(r"\s*```$", "", cleaned_text.strip(), flags=re.MULTILINE)
 
-    return data
+            data = json.loads(cleaned_text)
+
+            # 기본 스키마 무결성 검증
+            assert "date" in data, "date 필드가 누락되었습니다."
+            assert "macro_key_points" in data and len(data["macro_key_points"]) >= 1, "macro_key_points가 누락되었습니다."
+            assert "market_indicators" in data, "market_indicators가 누락되었습니다."
+            assert "top_news" in data and len(data["top_news"]) >= 1, "top_news가 누락되었습니다."
+
+            logger.info("Gemini API 호출 및 브리프 데이터 생성 성공!")
+            return data
+
+        except Exception as e:
+            last_exception = e
+            logger.warning(f"Gemini API 호출 실패 (시도 {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                wait_sec = attempt * 4  # 4초, 8초 순차 대기
+                logger.info(f"일시적 오류 또는 서버 과부하 감지. {wait_sec}초 대기 후 재시도합니다...")
+                time.sleep(wait_sec)
+            else:
+                logger.error(f"최대 재시도({max_retries}회) 실패: {e}")
+
+    raise last_exception
 
 
 def main():
