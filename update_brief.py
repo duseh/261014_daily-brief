@@ -3,7 +3,7 @@
 update_brief.py
 ===============
 매일 아침 국내 주요 경제 뉴스 RSS 및 시장 지표를 수집하고,
-Gemini API(gemini-2.0-flash)를 통해 구조화된 일간 인텔리전스 브리프(data.json)를 자동 생성하는 파이프라인 스크립트.
+Gemini API(gemini-3.8-flash)를 통해 구조화된 일간 인텔리전스 브리프(data.json)를 자동 생성하는 파이프라인 스크립트.
 """
 
 import os
@@ -237,7 +237,7 @@ def fetch_market_indicators() -> List[Dict[str, str]]:
 
 
 def generate_brief_with_gemini(articles: List[Dict[str, str]], indicators: List[Dict[str, str]], today_str: str, max_retries: int = 3) -> Dict[str, Any]:
-    """Gemini API(gemini-2.0-flash)를 호출하여 data.json 스키마에 일치하는 JSON 브리프 데이터를 생성합니다.
+    """Gemini API(gemini-3.8-flash)를 호출하여 data.json 스키마에 일치하는 JSON 브리프 데이터를 생성합니다.
     서버 과부하(503) 및 일시적 오류에 대비하여 최대 max_retries회 재시도합니다."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -285,7 +285,7 @@ def generate_brief_with_gemini(articles: List[Dict[str, str]], indicators: List[
 순수 JSON 데이터만 출력하십시오.
 """
 
-    target_model = "gemini-2.0-flash"
+    target_model = "gemini-3.8-flash"
     last_exception = None
 
     for attempt in range(1, max_retries + 1):
